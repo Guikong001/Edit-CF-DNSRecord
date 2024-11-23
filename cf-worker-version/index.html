@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Cloudflare DNS管理 - 前端</title>
+    <!-- 引入Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.6.2/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container">
+    <h1 class="mt-5">Cloudflare DNS管理</h1>
+    <form id="dnsForm" class="mt-4">
+        <div class="form-group">
+            <label for="action">选择操作：</label>
+            <select class="form-control" id="action" name="action">
+                <option value="add">增加DNS记录</option>
+                <option value="update">修改DNS记录</option>
+                <option value="delete">删除DNS记录</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="record_type">记录类型：</label>
+            <select class="form-control" id="record_type" name="record_type">
+                <option value="A">A (IPv4地址)</option>
+                <option value="AAAA">AAAA (IPv6地址)</option>
+                <option value="CNAME">CNAME (别名)</option>
+                <option value="TXT">TXT (文本记录)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="domain">域名（例如：sub.example.com）：</label>
+            <input type="text" class="form-control" id="domain" name="domain" required>
+        </div>
+        <div class="form-group">
+            <label for="content">内容（删除操作可留空）：</label>
+            <input type="text" class="form-control" id="content" name="content">
+        </div>
+        <div class="form-group">
+            <label for="ttl">TTL（生存时间，分钟，0为自动）：</label>
+            <input type="number" class="form-control" id="ttl" name="ttl" value="0" min="0">
+        </div>
+        <div class="form-group">
+            <label for="proxied">是否启用Cloudflare代理（仅适用于A、AAAA、CNAME记录）：</label>
+            <select class="form-control" id="proxied" name="proxied">
+                <option value="true">是</option>
+                <option value="false">否</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">提交</button>
+    </form>
+    <div id="message" class="mt-4"></div>
+    <div>
+        <p>获取CloudFlare DNS编辑密钥请访问<a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank">创建令牌 -> 编辑区域 DNS (使用模板)</a></p>
+        <p>本站不会以任何形式泄漏或传播用户保存的密钥信息。但为安全起见，我们不建议在任何非个人私密位置保存重要的密钥！</p>
+    </div>
+</div>
+<!-- 引入Bootstrap JS和依赖 -->
+<script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/popper.js/1.16.1/umd/popper.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/4.6.2/js/bootstrap.min.js"></script>
+
+<script>
+document.getElementById('dnsForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const action = document.getElementById('action').value;
+    const recordType = document.getElementById('record_type').value;
+    const domain = document.getElementById('domain').value;
+    const content = document.getElementById('content').value;
+    const ttlInput = document.getElementById('ttl').value;
+    const proxied = document.getElementById('proxied').value === 'true';
+
+    let ttl = parseInt(ttlInput);
+    if (isNaN(ttl) || ttl < 0) {
+        ttl = 1; // 默认自动
+    } else if (ttl === 0) {
+        ttl = 1; // Cloudflare中1表示自动
+    } else {
+        ttl = ttl * 60; // 转换为秒
+    }
+
+    const payload = {
+        action: action,
+        recordType: recordType,
+        domain: domain,
+        content: content,
+        ttl: ttl,
+        proxied: proxied
+    };
+
+    // 发送请求到Cloudflare Worker
+    fetch('https://your-worker-url.workers.dev', { // 替换为您的Worker URL
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showMessage(`${recordType}记录已成功${action === 'add' ? '添加' : action === 'update' ? '更新' : '删除'}。`);
+        } else {
+            showMessage(`操作失败：${JSON.stringify(data.errors)}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showMessage('请求失败，请检查控制台以获取更多信息。');
+    });
+});
+
+function showMessage(message) {
+    document.getElementById('message').innerHTML = '<div class="alert alert-info" role="alert">' + message + '</div>';
+}
+</script>
+</body>
+</html>
