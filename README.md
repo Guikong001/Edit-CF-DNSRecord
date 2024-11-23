@@ -29,4 +29,11 @@ A PY Script that used for cloudflare dns record editing. shell version and web v
 此时，将会在10081端口开启一个http监听，使用http://ip:10081即可访问使用。可以使用nginx设置反向代理，使用https访问。
 也可以使用screen命令创建一个虚拟终端，将脚本长时间运行在虚拟终端中。
 
-Web版本Demo：[点击访问](https://cf-dns-edit.fanxuepai.cn/)
+### CF worker version
+
+将cf-worker-version目录内的worker.js部署到cloudflare worker，并将API密钥作为环境变量添加到此worker，变量名称为API_TOKEN，值为密钥。
+
+随后在服务器或者worker pages部署前端页面，并将前端代码中的worker调用的代码，改为你的worker的实际地址（如果增加了自定义域，填写自定义域地址即可）
+
+设置完成后，访问前端页面即可使用。
+
