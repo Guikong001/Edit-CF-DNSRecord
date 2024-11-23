@@ -10,7 +10,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)  # 会话过期
 # Cloudflare API基础URL
 API_BASE_URL = "https://api.cloudflare.com/client/v4"
 
-# 更新后的HTML模板，包含“是否保存API密钥”的选项
+# 更新后的HTML模板，包含记录类型和TTL设置选项
 HTML_TEMPLATE = '''
 <!doctype html>
 <html lang="zh">
@@ -47,15 +47,28 @@ HTML_TEMPLATE = '''
             </select>
         </div>
         <div class="form-group">
+            <label for="record_type">记录类型：</label>
+            <select class="form-control" id="record_type" name="record_type">
+                <option value="A">A (IPv4地址)</option>
+                <option value="AAAA">AAAA (IPv6地址)</option>
+                <option value="CNAME">CNAME (别名)</option>
+                <option value="TXT">TXT (文本记录)</option>
+            </select>
+        </div>
+        <div class="form-group">
             <label for="domain">域名（例如：sub.example.com）：</label>
             <input type="text" class="form-control" id="domain" name="domain" required>
         </div>
         <div class="form-group">
-            <label for="ip">IP地址（删除操作可留空）：</label>
-            <input type="text" class="form-control" id="ip" name="ip">
+            <label for="content">内容（删除操作可留空）：</label>
+            <input type="text" class="form-control" id="content" name="content">
         </div>
         <div class="form-group">
-            <label for="proxied">是否启用Cloudflare代理：</label>
+            <label for="ttl">TTL（生存时间，分钟，0为自动）：</label>
+            <input type="number" class="form-control" id="ttl" name="ttl" value="0" min="0">
+        </div>
+        <div class="form-group">
+            <label for="proxied">是否启用Cloudflare代理（仅适用于A、AAAA、CNAME记录）：</label>
             <select class="form-control" id="proxied" name="proxied">
                 <option value="true">是</option>
                 <option value="false">否</option>
@@ -105,8 +118,8 @@ def get_zone_id(base_domain, headers):
     else:
         return None
 
-def get_dns_record_id(zone_id, record_name, headers):
-    params = {"name": record_name}
+def get_dns_record_id(zone_id, record_name, record_type, headers):
+    params = {"name": record_name, "type": record_type}
     response = requests.get(f"{API_BASE_URL}/zones/{zone_id}/dns_records", headers=headers, params=params)
     data = response.json()
     if data["success"] and data["result"]:
@@ -118,26 +131,29 @@ def delete_dns_record(zone_id, record_id, headers):
     data = response.json()
     return data["success"], data.get("errors")
 
-def add_dns_record(zone_id, record_name, ip, proxied, headers):
+def add_dns_record(zone_id, record_name, record_type, content, ttl, proxied, headers):
     payload = {
-        "type": "A",
+        "type": record_type,
         "name": record_name,
-        "content": ip,
-        "ttl": 120,
-        "proxied": proxied
+        "content": content,
+        "ttl": ttl
     }
+    # 仅当记录类型为A、AAAA或CNAME时才包含proxied字段
+    if record_type in ['A', 'AAAA', 'CNAME']:
+        payload["proxied"] = proxied
     response = requests.post(f"{API_BASE_URL}/zones/{zone_id}/dns_records", headers=headers, json=payload)
     data = response.json()
     return data["success"], data.get("errors")
 
-def update_dns_record(zone_id, record_id, record_name, ip, proxied, headers):
+def update_dns_record(zone_id, record_id, record_name, record_type, content, ttl, proxied, headers):
     payload = {
-        "type": "A",
+        "type": record_type,
         "name": record_name,
-        "content": ip,
-        "ttl": 120,
-        "proxied": proxied
+        "content": content,
+        "ttl": ttl
     }
+    if record_type in ['A', 'AAAA', 'CNAME']:
+        payload["proxied"] = proxied
     response = requests.put(f"{API_BASE_URL}/zones/{zone_id}/dns_records/{record_id}", headers=headers, json=payload)
     data = response.json()
     return data["success"], data.get("errors")
@@ -158,8 +174,18 @@ def dns_manager():
 
         action = request.form.get('action')
         record_name = request.form.get('domain')
-        ip = request.form.get('ip')
+        content = request.form.get('content')
         proxied = request.form.get('proxied') == 'true'
+        record_type = request.form.get('record_type')
+        ttl_input = request.form.get('ttl')
+        try:
+            ttl = int(ttl_input)
+            if ttl == 0:
+                ttl = 1  # 自动
+            else:
+                ttl = ttl * 60  # 将分钟转换为秒
+        except (ValueError, TypeError):
+            ttl = 1  # 默认自动
 
         headers = get_headers(api_token)
         base_domain = get_base_domain(record_name)
@@ -169,40 +195,40 @@ def dns_manager():
             return render_template_string(HTML_TEMPLATE, message=message, api_token_exists=api_token_exists)
 
         # 日志记录操作类型和域名
-        print(f"用户操作：{action}, 域名：{record_name}")
+        print(f"用户操作：{action}, 域名：{record_name}, 记录类型：{record_type}")
 
         if action == 'delete':
-            record_id = get_dns_record_id(zone_id, record_name, headers)
+            record_id = get_dns_record_id(zone_id, record_name, record_type, headers)
             if record_id:
                 success, errors = delete_dns_record(zone_id, record_id, headers)
                 if success:
-                    message = "DNS记录已成功删除。"
+                    message = f"{record_type}记录已成功删除。"
                 else:
-                    message = f"删除DNS记录失败：{errors}"
+                    message = f"删除{record_type}记录失败：{errors}"
             else:
-                message = "未找到指定的DNS记录。"
+                message = f"未找到指定的{record_type}记录。"
         elif action == 'add':
-            if not ip:
-                message = "IP地址不能为空。"
+            if not content:
+                message = "内容不能为空。"
                 return render_template_string(HTML_TEMPLATE, message=message, api_token_exists=api_token_exists)
-            success, errors = add_dns_record(zone_id, record_name, ip, proxied, headers)
+            success, errors = add_dns_record(zone_id, record_name, record_type, content, ttl, proxied, headers)
             if success:
-                message = "DNS记录已成功添加。"
+                message = f"{record_type}记录已成功添加。"
             else:
-                message = f"添加DNS记录失败：{errors}"
+                message = f"添加{record_type}记录失败：{errors}"
         elif action == 'update':
-            if not ip:
-                message = "IP地址不能为空。"
+            if not content:
+                message = "内容不能为空。"
                 return render_template_string(HTML_TEMPLATE, message=message, api_token_exists=api_token_exists)
-            record_id = get_dns_record_id(zone_id, record_name, headers)
+            record_id = get_dns_record_id(zone_id, record_name, record_type, headers)
             if record_id:
-                success, errors = update_dns_record(zone_id, record_id, record_name, ip, proxied, headers)
+                success, errors = update_dns_record(zone_id, record_id, record_name, record_type, content, ttl, proxied, headers)
                 if success:
-                    message = "DNS记录已成功更新。"
+                    message = f"{record_type}记录已成功更新。"
                 else:
-                    message = f"更新DNS记录失败：{errors}"
+                    message = f"更新{record_type}记录失败：{errors}"
             else:
-                message = "未找到指定的DNS记录。"
+                message = f"未找到指定的{record_type}记录。"
     return render_template_string(HTML_TEMPLATE, message=message, api_token_exists='api_token' in session)
 
 @app.route('/logout')
