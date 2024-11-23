@@ -28,3 +28,5 @@ A PY Script that used for cloudflare dns record editing. shell version and web v
 
 此时，将会在10081端口开启一个http监听，使用http://ip:10081即可访问使用。可以使用nginx设置反向代理，使用https访问。
 也可以使用screen命令创建一个虚拟终端，将脚本长时间运行在虚拟终端中。
+
+Web版本Demo：[点击访问](https://cf-dns-edit.fanxuepai.cn/)
