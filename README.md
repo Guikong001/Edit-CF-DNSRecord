@@ -1,6 +1,8 @@
 # Edit-CF-DNSRecord-PY
 A PY Script that used for cloudflare dns record editing. shell version and web version.
-由于中国大陆
+由于中国大陆时常出现Cloudflare dashboard访问较慢或无法打开的问题，使用API管理DNS记录会更加便利。
+该脚本Shell版本，支持增加、修改、删除DNS记录，以及DDNS动态解析。
+该脚本的Web版本，可以通过网页的形式访问并进行界面操作。
 
 
 ## Usage
